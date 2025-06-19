@@ -7,7 +7,7 @@ import { Heart, User, CalendarDays, CheckCircle, XCircle, Camera, Mail, Bell, Ba
 const queryClient = new QueryClient();
 
 // --- API Service (for React Query) ---
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 const fetchUserRole = async () => {
   const response = await fetch(`${API_BASE_URL}/user/role`);
