@@ -12,7 +12,9 @@ app.use(cors()); // Enable CORS for all routes
 app.use(express.json()); // Parse JSON request bodies
 
 // Initialize SQLite database
-const dbPath = path.resolve(__dirname, 'medicare.db');
+const dbPath = process.env.NODE_ENV === 'production'
+               ? '/opt/render/project/src/medicare.db-data/medicare.db' 
+               : path.resolve(__dirname, 'medicare.db'); 
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error opening database:', err.message);
