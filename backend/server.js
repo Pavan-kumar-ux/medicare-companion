@@ -6,9 +6,16 @@ const path = require('path');
 
 const app = express();
 const PORT = 3001;
+const corsOptions = {
+  origin: 'https://symphonious-cassata-30a7f9.netlify.app',
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  credentials: true, 
+  optionsSuccessStatus: 204 
+};
 
-// Middleware
-app.use(cors()); // Enable CORS for all routes
+app.use(cors(corsOptions)); // Enable CORS with specific options
+
+
 app.use(express.json()); // Parse JSON request bodies
 
 // Initialize SQLite database
