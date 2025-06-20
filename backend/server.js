@@ -1,32 +1,65 @@
-// backend/server.js
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs'); // <--- NEW: Import Node.js File System module
 
 const app = express();
 const PORT = 3001;
+
+// CORS configuration - allowing only your Netlify frontend
 const corsOptions = {
-  origin: 'https://symphonious-cassata-30a7f9.netlify.app',
+  origin: 'https://symphonious-cassata-30a7f9.netlify.app', // IMPORTANT: Keep your exact Netlify URL here
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-  credentials: true, 
-  optionsSuccessStatus: 204 
+  credentials: true,
+  optionsSuccessStatus: 204
 };
-
-app.use(cors(corsOptions)); // Enable CORS with specific options
-
+app.use(cors(corsOptions)); // <--- CORRECT: Only one cors middleware line here
 
 app.use(express.json()); // Parse JSON request bodies
 
-// Initialize SQLite database
-const dbPath = process.env.NODE_ENV === 'production'
-               ? '/opt/render/project/src/medicare.db-data/medicare.db' 
-               : path.resolve(__dirname, 'medicare.db'); 
+// --- Database Initialization ---
+let dbPath;
+let dbDirectory;
+
+// Determine database path based on environment
+if (process.env.NODE_ENV === 'production') {
+    // This is the mount path for your persistent disk on Render
+    dbDirectory = '/opt/render/project/src/medicare.db-data';
+    dbPath = path.join(dbDirectory, 'medicare.db'); // Safely join path segments
+} else {
+    // Local development path
+    dbDirectory = path.resolve(__dirname);
+    dbPath = path.join(dbDirectory, 'medicare.db');
+}
+
+// <--- NEW FUNCTION: To ensure the directory for the database file exists
+function ensureDirectoryExistence(filePath) {
+    const dirname = path.dirname(filePath); // Get the directory path from the full file path
+    if (fs.existsSync(dirname)) { // Check if the directory already exists
+        return true;
+    }
+    // If directory doesn't exist, create it recursively
+    fs.mkdirSync(dirname, { recursive: true });
+    console.log(`[DB Setup] Created directory: ${dirname}`); // Log for debugging on Render
+}
+
+// <--- NEW CALL: Execute the function BEFORE initializing the database
+ensureDirectoryExistence(dbPath);
+
+// Initialize SQLite database connection
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error opening database:', err.message);
+    // Provide more context for SQLITE_CANTOPEN errors
+    if (err.code === 'SQLITE_CANTOPEN') {
+        console.error('[DB Setup] SQLITE_CANTOPEN error: Possible permission issue or target directory not writable/found.');
+        console.error('[DB Setup] Attempted DB Path:', dbPath);
+        console.error('[DB Setup] Does DB directory exist before connection?', fs.existsSync(path.dirname(dbPath)));
+    }
   } else {
     console.log('Connected to the SQLite database.');
+    console.log('Database file is located at:', dbPath); // Confirm actual path being used
     // Create tables if they don't exist
     db.serialize(() => {
       // Users table to store role
@@ -38,7 +71,6 @@ const db = new sqlite3.Database(dbPath, (err) => {
       `, (err) => {
         if (err) console.error('Error creating users table:', err.message);
         else {
-          // Insert a default user if none exists for demonstration
           db.get("SELECT COUNT(*) as count FROM users", (err, row) => {
             if (err) {
               console.error('Error counting users:', err.message);
@@ -68,7 +100,6 @@ const db = new sqlite3.Database(dbPath, (err) => {
       `, (err) => {
         if (err) console.error('Error creating medications table:', err.message);
         else {
-          // Add some dummy medication data if none exists
           db.get("SELECT COUNT(*) as count FROM medications", (err, row) => {
             if (err) {
               console.error('Error counting medications:', err.message);
@@ -77,7 +108,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
             if (row.count === 0) {
               const today = new Date();
               const yyyy = today.getFullYear();
-              const mm = String(today.getMonth() + 1).padStart(2, '0'); // Months are 0-based
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
               const dd = String(today.getDate()).padStart(2, '0');
               const formattedDate = `${yyyy}-${mm}-${dd}`;
 
@@ -104,7 +135,6 @@ const db = new sqlite3.Database(dbPath, (err) => {
 
 // Get/Set User Role
 app.get('/api/user/role', (req, res) => {
-  // For simplicity, we'll assume a single user (ID 1)
   db.get('SELECT role FROM users WHERE id = 1', (err, row) => {
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -128,7 +158,6 @@ app.post('/api/user/role', (req, res) => {
 
 // Patient Dashboard Data
 app.get('/api/patient/dashboard', (req, res) => {
-  // For simplicity, hardcode userId to 1
   const userId = 1;
   const today = new Date();
   const yyyy = today.getFullYear();
@@ -144,14 +173,8 @@ app.get('/api/patient/dashboard', (req, res) => {
         return res.status(500).json({ error: err.message });
       }
 
-      // Calculate monthly rate (mock data for now)
-      // In a real app, you'd calculate this based on a month's adherence
-      const monthlyRate = 80; // Placeholder
-
-      // Calculate Day Streak (mock data for now)
-      const dayStreak = 5; // Placeholder
-
-      // Calculate Today's Status (mock data for now)
+      const monthlyRate = 80;
+      const dayStreak = 5;
       const totalToday = medications.length;
       const takenToday = medications.filter(m => m.status === 'taken').length;
       const todayStatus = totalToday > 0 ? (takenToday / totalToday) * 100 : 0;
@@ -161,14 +184,12 @@ app.get('/api/patient/dashboard', (req, res) => {
         monthlyRate: `${monthlyRate}%`,
         dayStreak: dayStreak,
         todayStatus: `${Math.round(todayStatus)}%`,
-        // Mock calendar data
         calendarData: getMockCalendarData(),
       });
     }
   );
 });
 
-// Helper to generate mock calendar data
 function getMockCalendarData() {
   const today = new Date();
   const calendar = {};
@@ -177,12 +198,11 @@ function getMockCalendarData() {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
     const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const status = Math.random() > 0.7 ? 'missed' : 'taken'; // Randomly taken or missed
+    const status = Math.random() > 0.7 ? 'missed' : 'taken';
     calendar[dateKey] = status;
   }
   return calendar;
 }
-
 
 // Mark Medication as Taken
 app.post('/api/patient/mark-taken', (req, res) => {
@@ -208,7 +228,6 @@ app.post('/api/patient/mark-taken', (req, res) => {
 
 // Caretaker Dashboard Data
 app.get('/api/caretaker/dashboard', (req, res) => {
-  // For simplicity, provide mock data
   const adherenceRate = 85;
   const currentStreak = 5;
   const missedThisMonth = 3;
@@ -220,7 +239,6 @@ app.get('/api/caretaker/dashboard', (req, res) => {
   const dd = String(today.getDate()).padStart(2, '0');
   const formattedDate = `${yyyy}-${mm}-${dd}`;
 
-  // Get today's medication status for the patient (assuming ID 1)
   db.all(
     'SELECT * FROM medications WHERE userId = 1 AND date = ?',
     [formattedDate],
@@ -241,7 +259,7 @@ app.get('/api/caretaker/dashboard', (req, res) => {
         currentStreak: currentStreak,
         missedThisMonth: missedThisMonth,
         takenThisWeek: takenThisWeek,
-        todayStatus: dailyMedicationStatus, // Can be used to show "Pending" etc.
+        todayStatus: dailyMedicationStatus,
         monthlyAdherenceProgress: {
           overall: 85,
           takenDays: 22,
@@ -258,4 +276,3 @@ app.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
   console.log('You can find the database file at:', dbPath);
 });
-
